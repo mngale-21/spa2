@@ -1,0 +1,235 @@
+// ============================================================================
+// Administration System — Prisma Schema
+//
+// IMPORTANT — SHARED DATABASE ARCHITECTURE:
+// This app does NOT have its own database. It points at the EXACT SAME
+// PostgreSQL database as the Salon Management System backend (same
+// DATABASE_URL in both .env files). Per the spec: "Sitaki ku-install au
+// kutengeneza mfumo mpya wa salon kwa kila mteja... mfumo mmoja wa salon
+// uweze kutumiwa na makampuni mengi" — there is ONE salon deployment for
+// every company, and this Administration System is what creates/suspends/
+// manages the Company rows that deployment reads.
+//
+// The models below marked "OWNED HERE" are used ONLY by this app — free to
+// evolve. The models marked "SHARED TABLE" describe tables that physically
+// belong to the Salon Management System's own schema.prisma (source of
+// truth for migrations — this app NEVER runs `prisma migrate`, only
+// `prisma generate`, against this database). If the Salon system's schema
+// for Company/User ever changes, mirror the change here too, field for
+// field, or this app's queries will silently drift from reality.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// SHARED TABLE — must match Role enum in salon-system/backend/prisma/schema.prisma
+// ----------------------------------------------------------------------------
+enum Role {
+  ADMIN
+  CASHIER
+  STAFF
+}
+
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum PlatformRole {
+  SUPER_ADMIN
+  SUB_ADMIN
+}
+
+// ----------------------------------------------------------------------------
+// SHARED TABLE (companies) — a tenant of the Salon Management System.
+// Creating a row here is literally what "adding a company" means platform-
+// wide; the Salon backend reads this same row on every request to check
+// isActivated/status.
+// ----------------------------------------------------------------------------
+model Company {
+  id        String        @id @default(uuid())
+  name      String
+  ownerName String
+  email     String        @unique
+  phone     String?
+
+  subscriptionType  String?
+  subscriptionStart DateTime?
+  subscriptionEnd   DateTime?
+
+  status    CompanyStatus @default(ACTIVE)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("companies")
+}
+
+// SHARED TABLE — one row per branch, owned by the Salon system. This app
+// only ever COUNTS/reads branches (e.g. "Company X has 2 branches" on the
+// dashboard) — it never creates or edits one; that's a Company Admin's job
+// inside the Salon system itself.
+model Branch {
+  id        String @id @default(uuid())
+  name      String
+  companyId String
+
+  @@map("branches")
+}
+
+// SHARED TABLE — the Salon system's own users (Company Admin / Cashier /
+// Staff). This app creates exactly ONE row here per new company (the first
+// Company Admin, isActivated: false) and otherwise only reads for display.
+// Field set mirrors salon-system/backend/prisma/schema.prisma's User model
+// exactly — see the big warning at the top of this file.
+model User {
+  id       String @id @default(uuid())
+  username String @unique
+  password String // bcrypt hash — this app writes an unusable random hash
+                    // at creation time; the real password is set by the
+                    // Company Admin themself via the activation link.
+  companyId String
+  email     String? @unique
+
+  resetPasswordToken   String?   @unique
+  resetPasswordExpires DateTime?
+
+  isActivated       Boolean   @default(true)
+  activationToken   String?   @unique
+  activationExpires DateTime?
+
+  firstName String
+  lastName  String
+  role      Role   @default(CASHIER)
+
+  branchId String?
+  language String  @default("en")
+
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(true)
+  lastLoginAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+// ----------------------------------------------------------------------------
+// OWNED HERE — history of subscription periods per Company.
+// ----------------------------------------------------------------------------
+model Subscription {
+  id        String             @id @default(uuid())
+  companyId String
+  planName  String
+  amount    Decimal            @db.Decimal(12, 2)
+  currency  String             @default("TZS")
+  startDate DateTime
+  endDate   DateTime
+  status    SubscriptionStatus @default(ACTIVE)
+  createdAt DateTime           @default(now())
+
+  @@index([companyId])
+  @@map("subscriptions")
+}
+
+// OWNED HERE — one row per platform-subscription payment received (NOT a
+// salon customer's payment — that's an entirely separate Transaction table
+// inside the Salon system's own schema).
+model Payment {
+  id        String   @id @default(uuid())
+  companyId String
+  amount    Decimal  @db.Decimal(12, 2)
+  currency  String   @default("TZS")
+  method    String   @default("MANUAL")
+  reference String?
+  paidAt    DateTime @default(now())
+
+  @@index([companyId])
+  @@map("platform_payments")
+}
+
+// OWNED HERE — an Administration System operator (Super Admin or Sub-Admin).
+// Entirely separate identity space from the Salon system's User model above.
+model PlatformAdmin {
+  id           String       @id @default(uuid())
+  name         String
+  email        String       @unique
+  passwordHash String
+  role         PlatformRole @default(SUB_ADMIN)
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  managedCompanies PlatformAdminCompany[]
+  activityLogs     ActivityLog[]
+
+  @@map("platform_admins")
+}
+
+// OWNED HERE — which companies a Sub-Admin may manage.
+model PlatformAdminCompany {
+  id              String        @id @default(uuid())
+  platformAdminId String
+  platformAdmin   PlatformAdmin @relation(fields: [platformAdminId], references: [id], onDelete: Cascade)
+  companyId       String
+  assignedAt      DateTime      @default(now())
+
+  @@unique([platformAdminId, companyId])
+  @@map("platform_admin_companies")
+}
+
+// OWNED HERE — audit trail: every action a platform admin takes on a
+// company, including "Enter System" (support access), per spec section 10.
+model ActivityLog {
+  id              String         @id @default(uuid())
+  platformAdminId String?
+  platformAdmin   PlatformAdmin? @relation(fields: [platformAdminId], references: [id])
+  companyId       String?
+  action          String
+  details         String?
+  createdAt       DateTime       @default(now())
+
+  @@index([companyId])
+  @@map("activity_logs")
+}
+
+// OWNED HERE — vifurushi (subscription plans) vinavyoweza kuhaririwa na
+// Super Admin (bei, kikomo cha matawi/wafanyakazi, n.k.) badala ya
+// kuwekwa kwenye code. "key" ndiyo inayohifadhiwa kwenye Company.subscriptionType
+// (safu iliyokuwepo tayari kwenye jedwali shirikishi la companies).
+// Backend (Salon Management System) haitangazi model hii kwenye schema yake
+// kabisa — inasoma jedwali hili kwa raw SQL badala yake, ili kuepuka
+// mgongano wa migration history kati ya app mbili (angalia branchController.js).
+model Plan {
+  id               String   @id @default(uuid())
+  key              String   @unique
+  label            String
+  maxBranches      Int      @default(1)
+  maxStaff         Int      @default(5)
+  whatsappEnabled  Boolean  @default(true)
+  prioritySupport  Boolean  @default(false)
+  advancedReports  Boolean  @default(false)
+  priceTzs         Decimal  @db.Decimal(12, 2) @default(0)
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("plans")
+}

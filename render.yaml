@@ -1,0 +1,118 @@
+# =============================================================================
+# render.yaml  -  Blueprint ya Salon Platform (weka kwenye ROOT ya repo ya Git,
+# yaani folder ile yenye "administration-system" na "salon-management-system")
+#
+# Inaunda: 1 PostgreSQL + 3 web services (backend, frontend, admin).
+# Badilisha majina "evodi-salon-*" kama unataka (yawe ya kipekee kote Render,
+# kwa sababu ndiyo yanayounda URL: https://<jina>.onrender.com).
+# =============================================================================
+
+databases:
+  - name: salon-db
+    databaseName: salon_db
+    user: salon_user
+    region: frankfurt          # karibu zaidi na Afrika Mashariki; services zote ziwe region hii hii
+    plan: free                 # free DB ina muda mfupi wa maisha - angalia masharti ya Render
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1) BACKEND  (Salon Management System API + Socket.IO)
+  #    ndiye mmiliki wa migrations (prisma migrate deploy) - SIYO admin.
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: evodi-salon-backend
+    runtime: node
+    region: frankfurt
+    plan: free                 # SMTP (email) HAIFANYI KAZI kwenye "free" - angalia maelezo; badilisha kuwa "starter" ukitaka email
+    rootDir: salon-management-system/backend
+    buildCommand: npm install --include=dev && npx prisma generate && npx prisma migrate deploy
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: salon-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLIENT_ORIGIN                       # URL ya FRONTEND, bila "/" mwishoni
+        value: https://evodi-salon-frontend.onrender.com
+      - key: TENANT_SSO_SECRET                   # LAZIMA iwe sawa kabisa na ya admin
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false                              # mf: Salon System <wewe@gmail.com>
+
+  # ---------------------------------------------------------------------------
+  # 2) FRONTEND  (Salon Management System UI - Next.js)
+  #    NEXT_PUBLIC_* zinaingia wakati wa BUILD - ukizibadilisha, fanya redeploy.
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: evodi-salon-frontend
+    runtime: node
+    region: frankfurt
+    plan: free
+    rootDir: salon-management-system/frontend
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: NEXT_PUBLIC_API_URL
+        value: https://evodi-salon-backend.onrender.com/api
+      - key: NEXT_PUBLIC_SOCKET_URL
+        value: https://evodi-salon-backend.onrender.com
+
+  # ---------------------------------------------------------------------------
+  # 3) ADMINISTRATION SYSTEM  (Next.js)
+  #    HAIENDESHI prisma migrate / db push KAMWE (itafuta data ya backend).
+  #    Majedwali yake yanaundwa kwa SQL (admin-tables-only.sql, plans-table.sql).
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: evodi-salon-admin
+    runtime: node
+    region: frankfurt
+    plan: free                 # badilisha kuwa "starter" ili email za activation/ukumbusho zitumwe
+    rootDir: administration-system
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: salon-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: SALON_SYSTEM_URL                    # URL ya FRONTEND, bila "/" mwishoni
+        value: https://evodi-salon-frontend.onrender.com
+      - key: TENANT_SSO_SECRET                   # LAZIMA iwe sawa kabisa na ya backend
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: Salon SaaS Platform
+      - key: SMTP_FROM_EMAIL
+        sync: false

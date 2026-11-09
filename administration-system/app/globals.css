@@ -1,0 +1,49 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-sand-100 text-ink-900 font-body antialiased;
+}
+
+.font-display {
+  font-family: "Fraunces", serif;
+}
+
+:focus-visible {
+  outline: 2px solid theme("colors.brass.500");
+  outline-offset: 2px;
+}
+
+.card {
+  @apply bg-white rounded-xl2 shadow-soft border border-sand-200 p-5;
+}
+.btn {
+  @apply px-4 py-2 rounded-lg text-sm font-semibold transition;
+}
+.btn-primary {
+  @apply btn bg-ink-900 text-white hover:bg-ink-800;
+}
+.btn-danger {
+  @apply btn bg-status-deleted text-white hover:opacity-90;
+}
+.btn-warning {
+  @apply btn bg-status-suspended text-white hover:opacity-90;
+}
+.btn-success {
+  @apply btn bg-status-active text-white hover:opacity-90;
+}
+.btn-outline {
+  @apply btn border border-sand-200 text-ink-800 hover:bg-sand-100;
+}
+.input {
+  @apply w-full border border-sand-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brass-400;
+}
+.badge {
+  @apply px-2 py-1 rounded-full text-xs font-semibold;
+}
+.badge-active { @apply bg-status-activeTint text-status-active; }
+.badge-suspended { @apply bg-status-suspendedTint text-status-suspended; }
+.badge-deleted { @apply bg-status-deletedTint text-status-deleted; }

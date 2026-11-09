@@ -1,0 +1,12 @@
+# Siri - USIPUSH KAMWE (zina password za Gmail, database, JWT)
+.env
+.env.*
+!.env.example
+.env.local
+.env.validate
+
+node_modules/
+.next/
+out/
+*.log
+.DS_Store

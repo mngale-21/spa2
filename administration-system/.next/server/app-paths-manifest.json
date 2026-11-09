@@ -1,0 +1,6 @@
+{
+  "/api/plans/route": "app/api/plans/route.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/dashboard/companies/page": "app/dashboard/companies/page.js",
+  "/dashboard/plans/page": "app/dashboard/plans/page.js"
+}
